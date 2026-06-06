@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Space Fighters X: Cinematic Web Edition</title>
+    <style>
+        body {
+            background-color: #0b0b10;
+            color: #00ff66;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            background-color: #000000;
+            border: 4px solid #333;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0, 255, 102, 0.2);
+            text-align: left;
+            white-space: pre;
+            line-height: 1.2;
+            font-size: 16px;
+        }
+        .controls-hint {
+            margin-top: 15px;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">Loading Engine...</div>
+<div class="controls-hint">Controls: [A] Move Left | [D] Move Right | [F] Fire Laser | [M] Main Menu | [Q] Reset Save</div>
+
+<script>
+// --- GAME CONFIGURATION ---
+const SCREEN_WIDTH = 60;
+const SCREEN_HEIGHT = 25;
+const TARGET_FPS = 30;
+const FRAME_TIME = 1000 / TARGET_FPS;
+
+// Smooth physics constants
+const ACCELERATION = 1.25;
+const FRICTION = 0.70;
+const MAX_SPEED = 4.0;
+
+// Game State Engine
+let state = "STARTUP"; // STARTUP, MENU, PLAYING, GAMEOVER, WIN
+let score = 0;
+let highScore = 0;
+let lives = 3;
+let kills = 0;
+let numEnemies = 3;
+let currentDifficultyTier = 1;
+let unlockedDifficulty = 1;
+
+let playerX = SCREEN_WIDTH / 2;
+let playerVelocityX = 0;
+const playerY = SCREEN_HEIGHT - 2;
+
+let rapidFireTimer = 0;
+let doubleScoreTimer = 0;
+
+let bullets = [];
+let enemies = [];
+let powerups = [];
+let explosions = [];
+let stars = [];
+let boss = { x: 0, y: 0, hp: 0, maxHp: 0, active: false, moveDirection: 0.5 };
+
+// Keyboard Input tracking
+const keys = {};
+window.addEventListener('keydown', (e) => { 
+    keys[e.key.toUpperCase()] = true; 
+    handleMenuInputs(e.key.toUpperCase());
+});
+window.addEventListener('keyup', (e) => { keys[e.key.toUpperCase()] = false; });
+
+// Local Storage Loading/Saving (Replaces your .dat files)
+if (localStorage.getItem('sfx_highScore')) highScore = parseInt(localStorage.getItem('sfx_highScore'));
+if (localStorage.getItem('sfx_unlocked')) unlockedDifficulty = parseInt(localStorage.getItem('sfx_unlocked'));
+
+function saveGameData() {
+    localStorage.setItem('sfx_highScore', highScore);
+    localStorage.setItem('sfx_unlocked', unlockedDifficulty);
+}
+
+// --- ENGINE INITIALIZATION ---
+function initGame() {
+    score = 0; lives = 3; kills = 0;
+    rapidFireTimer = 0; doubleScoreTimer = 0;
+    playerX = SCREEN_WIDTH / 2;
+    playerVelocityX = 0;
+    boss.active = false;
+    bullets = []; enemies = []; powerups = []; explosions = [];
+
+    // Build Starfield
+    stars = [];
+    for(let i=0; i<30; i++) {
+        stars.push({
+            x: Math.floor(Math.random() * (SCREEN_WIDTH - 2)) + 1,
+            y: Math.floor(Math.random() * (SCREEN_HEIGHT - 2)) + 1,
+            type: Math.random() > 0.5 ? '.' : '*'
+        });
+    }
+
+    // Spawn initial wave
+    for(let i=0; i<numEnemies; i++) {
+        spawnEnemy();
+    }
+}
+
+function spawnEnemy() {
+    enemies.push({
+        x: Math.floor(Math.random() * (SCREEN_WIDTH - 4)) + 2,
+        y: Math.floor(Math.random() * 5) + 1
+    });
+}
+
+function spawnBullet(offset, yOffset) {
+    bullets.push({ x: Math.floor(playerX) + offset, y: playerY - 1 - yOffset });
+}
+
+function spawnPowerUp(x, y) {
+    if (Math.random() < 0.25) {
+        powerups.push({ x: Math.min(Math.max(x, 2), SCREEN_WIDTH - 4), y: y, type: Math.floor(Math.random() * 3) + 1 });
+    }
+}
+
+// --- INTERACTIVE SCREEN ROUTING ---
+function handleMenuInputs(key) {
+    if (state === "STARTUP") {
+        state = "MENU";
+    } else if (state === "MENU") {
+        if (key === '1') { numEnemies = 3; currentDifficultyTier = 1; initGame(); state = "PLAYING"; }
+        if (key === '2' && unlockedDifficulty >= 2) { numEnemies = 5; currentDifficultyTier = 2; initGame(); state = "PLAYING"; }
+        if (key === '3' && unlockedDifficulty >= 3) { numEnemies = 8; currentDifficultyTier = 3; initGame(); state = "PLAYING"; }
+        if (key === '4' && unlockedDifficulty >= 4) { numEnemies = 12; currentDifficultyTier = 4; initGame(); state = "PLAYING"; }
+    } else if (state === "GAMEOVER" || state === "WIN") {
+        if (key === 'M') state = "MENU";
+        if (key === 'Q') {
+            localStorage.clear();
+            highScore = 0; unlockedDifficulty = 1;
+            state = "STARTUP";
+        }
+    }
+}
+
+// --- PHYSICS ENGINE ---
+function updatePhysics() {
+    if (keys['A']) playerVelocityX -= ACCELERATION;
+    if (keys['D']) playerVelocityX += ACCELERATION;
+    
+    playerVelocityX *= FRICTION;
+    if (playerVelocityX > MAX_SPEED) playerVelocityX = MAX_SPEED;
+    if (playerVelocityX < -MAX_SPEED) playerVelocityX = -MAX_SPEED;
+    playerX += playerVelocityX;
+
+    if (playerX < 2) { playerX = 2; playerVelocityX = 0; }
+    if (playerX > SCREEN_WIDTH - 3) { playerX = SCREEN_WIDTH - 3; playerVelocityX = 0; }
+
+    // Dense laser column spawning
+    if (keys['F']) {
+        if (rapidFireTimer > 0) {
+            spawnBullet(-1, 0); spawnBullet(-1, 1);
+            spawnBullet(0, 0);  spawnBullet(0, 1);
+            spawnBullet(1, 0);  spawnBullet(1, 1);
+        } else {
+            spawnBullet(0, 0); spawnBullet(0, 1);
+        }
+    }
+
+    if (rapidFireTimer > 0) rapidFireTimer--;
+    if (doubleScoreTimer > 0) doubleScoreTimer--;
+
+    // Entities translation step
+    bullets.forEach(b => b.y -= 2);
+    bullets = bullets.filter(b => b.y > 0);
+
+    // Stars & Powerup scroll steps
+    stars.forEach(s => {
+        if(Math.random() > 0.8) s.y++;
+        if(s.y >= SCREEN_HEIGHT - 1) s.y = 1;
+    });
+
+    powerups.forEach(p => { if(Math.random() > 0.5) p.y++; });
+    powerups = powerups.filter(p => p.y < SCREEN_HEIGHT - 1);
+
+    // Enemy movement step
+    enemies.forEach(e => {
+        if(Math.random() > 0.7) e.y++;
+        if(e.y >= SCREEN_HEIGHT - 1) {
+            lives--;
+            e.y = 1;
+            e.x = Math.floor(Math.random() * (SCREEN_WIDTH - 4)) + 2;
+            if (lives <= 0) state = "GAMEOVER";
+        }
+    });
+
+    // Collision Resolution step
+    let pX_Int = Math.floor(playerX);
+    bullets.forEach((b, bIdx) => {
+        enemies.forEach((e, eIdx) => {
+            if ((b.y === e.y || b.y + 1 === e.y) && (b.x >= e.x - 1 && b.x <= e.x + 1)) {
+                bullets.splice(bIdx, 1);
+                spawnPowerUp(e.x, e.y);
+                enemies.splice(eIdx, 1);
+                kills++;
+                score += (doubleScoreTimer > 0) ? 20 : 10;
+                if (score > highScore) highScore = score;
+                
+                if (kills >= 100) {
+                    if (currentDifficultyTier === unlockedDifficulty && unlockedDifficulty < 4) {
+                        unlockedDifficulty++;
+                    }
+                    saveGameData();
+                    state = "WIN";
+                } else {
+                    spawnEnemy();
+                }
+            }
+        });
+    });
+
+    // 2x2 Huge Item collection checks
+    powerups.forEach((p, pIdx) => {
+        if ((playerY === p.y || playerY === p.y + 1) && (pX_Int + 1 >= p.x && pX_Int - 1 <= p.x + 1)) {
+            if (p.type === 1) lives++;
+            if (p.type === 2) rapidFireTimer = 150;
+            if (p.type === 3) doubleScoreTimer = 150;
+            powerups.splice(pIdx, 1);
+        }
+    });
+}
+
+// --- RENDER ENGINE ---
+function render() {
+    let output = "";
+
+    if (state === "STARTUP") {
+        output += "\n\n\n\n";
+        output += "\t\t=========================================\n";
+        output += "\t\t       SPACE FIGHTERS X: CINEMATIC WEB   \n";
+        output += "\t\t=========================================\n\n";
+        output += `\t\t       High Score To Beat: ${highScore}\n`;
+        output += `\t\t       Campaign Unlocked Max: Tier ${unlockedDifficulty}\n\n`;
+        output += "\t\t          PRESS ANY KEY TO START\n";
+        output += "\t\t=========================================\n";
+        document.getElementById("game-container").innerHTML = output;
+        return;
+    }
+
+    if (state === "MENU") {
+        output += "\n\n\n\n";
+        output += "\t\t=========================================\n";
+        output += "\t\t           CHOOSE YOUR DIFFICULTY        \n";
+        output += "\t\t=========================================\n\n";
+        output += `\t\t      1. EASY     (3 Enemies) ${unlockedDifficulty >= 1 ? '[AVAILABLE]' : '[LOCKED]'}\n`;
+        output += `\t\t      2. MEDIUM   (5 Enemies) ${unlockedDifficulty >= 2 ? '[AVAILABLE]' : '[LOCKED]'}\n`;
+        output += `\t\t      3. HARD     (8 Enemies) ${unlockedDifficulty >= 3 ? '[AVAILABLE]' : '[LOCKED]'}\n`;
+        output += `\t\t      4. INSANE   (12 Enemies) ${unlockedDifficulty >= 4 ? '[AVAILABLE]' : '[LOCKED]'}\n\n`;
+        output += "\t\t=========================================\n";
+        document.getElementById("game-container").innerHTML = output;
+        return;
+    }
+
+    if (state === "GAMEOVER" || state === "WIN") {
+        output += "\n\n\n\n";
+        output += "\t\t=========================================\n";
+        output += `\t\t            ${state === "WIN" ? "MISSION ACCOMPLISHED!" : "GAME OVER"}\n`;
+        output += "\t\t=========================================\n\n";
+        output += `\t\t          FINAL SCORE : ${score}\n`;
+        output += `\t\t          TOTAL KILLS : ${kills}\n`;
+        output += `\t\t          HIGH SCORE  : ${highScore}\n\n`;
+        output += "\t\t      Press [M] Main Menu | [Q] Reset Save\n";
+        output += "\t\t=========================================\n";
+        document.getElementById("game-container").innerHTML = output;
+        return;
+    }
+
+    // Draw Active Playfield Canvas Map Grid Buffer Array Matrix
+    let grid = [];
+    for(let y=0; y<SCREEN_HEIGHT; y++) {
+        grid[y] = [];
+        for(let x=0; x<SCREEN_WIDTH; x++) {
+            if (y === 0 || y === SCREEN_HEIGHT - 1) grid[y][x] = "-";
+            else if (x === 0 || x === SCREEN_WIDTH - 1) grid[y][x] = "|";
+            else grid[y][x] = " ";
+        }
+    }
+
+    stars.forEach(s => grid[s.y][s.x] = s.type);
+    bullets.forEach(b => { if (b.y > 0 && b.y < SCREEN_HEIGHT) grid[b.y][b.x] = "║"; });
+    enemies.forEach(e => {
+        grid[e.y][e.x] = "V";
+        grid[e.y][e.x-1] = "<";
+        grid[e.y][e.x+1] = ">";
+    });
+
+    // Draw Huge 2x2 Box Items
+    powerups.forEach(p => {
+        if (p.y > 0 && p.y < SCREEN_HEIGHT - 2) {
+            let icon = p.type === 1 ? "H" : p.type === 2 ? "R" : "2";
+            grid[p.y][p.x] = "[";   grid[p.y][p.x+1] = "]";
+            grid[p.y+1][p.x] = "|"; grid[p.y+1][p.x+1] = icon;
+        }
+    });
+
+    // Draw Ship
+    let pX_Int = Math.floor(playerX);
+    grid[playerY][pX_Int - 1] = "/";
+    grid[playerY][pX_Int] = "_";
+    grid[playerY][pX_Int + 1] = "\\";
+
+    // Flatten grid matrix to HTML output string
+    for(let y=0; y<SCREEN_HEIGHT; y++) {
+        output += grid[y].join("") + "\n";
+    }
+
+    // Render HUD element components
+    output += `\n SCORE: ${score.toString().padEnd(4)} | KILLS: ${kills.toString().padEnd(3)}/100 | LIVES: ${lives} `;
+    if (rapidFireTimer > 0) output += `[⚡ OVERDRIVE] `;
+    if (doubleScoreTimer > 0) output += `[♦ 2x POINTS] `;
+
+    document.getElementById("game-container").innerHTML = output;
+}
+
+// --- CINEMATIC TICK CONTROLLER LOOP ---
+let lastTime = performance.now();
+function gameLoop(currentTime) {
+    requestAnimationFrame(gameLoop);
+    
+    let elapsed = currentTime - lastTime;
+    if (elapsed > FRAME_TIME) {
+        lastTime = currentTime - (elapsed % FRAME_TIME);
+        
+        if (state === "PLAYING") {
+            handleInput();
+            updatePhysics();
+        }
+        render();
+    }
+}
+
+// Start Engine Hook
+requestAnimationFrame(gameLoop);
+</script>
+
+</body>
+</html>
