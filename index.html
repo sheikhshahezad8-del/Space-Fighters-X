@@ -47,10 +47,10 @@ const SCREEN_HEIGHT = 25;
 const TARGET_FPS = 30;
 const FRAME_TIME = 1000 / TARGET_FPS;
 
-// --- TUNED RETRO SMOOTH PHYSICS VALUES ---
-const ACCELERATION = 0.35;  // Cut down significantly from 1.25 for precise weight
-const FRICTION = 0.60;      // Stronger dampening effect so you stop drifting instantly
-const MAX_SPEED = 1.5;      // Capped speed low so it matches a true 30 FPS cabinet look
+// --- TUNED SMOOTH PHYSICS ---
+const ACCELERATION = 0.35;  
+const FRICTION = 0.60;      
+const MAX_SPEED = 1.5;      
 
 // Game State Engine
 let state = "STARTUP"; 
@@ -72,7 +72,6 @@ let doubleScoreTimer = 0;
 let bullets = [];
 let enemies = [];
 let powerups = [];
-let explosions = [];
 let stars = [];
 
 // Keyboard Input tracking
@@ -80,7 +79,6 @@ const keys = {};
 window.addEventListener('keydown', (e) => { 
     let keyName = e.key.toUpperCase();
     if (keyName === " ") keyName = "SPACE";
-    
     keys[keyName] = true; 
     handleMenuInputs(keyName);
     
@@ -113,7 +111,7 @@ function initGame() {
     rapidFireTimer = 0; doubleScoreTimer = 0;
     playerX = SCREEN_WIDTH / 2;
     playerVelocityX = 0;
-    bullets = []; enemies = []; powerups = []; explosions = [];
+    bullets = []; enemies = []; powerups = [];
 
     stars = [];
     for(let i=0; i<30; i++) {
@@ -130,9 +128,10 @@ function initGame() {
 }
 
 function spawnEnemy() {
+    // Ensuring clean static integer positioning boundaries
     enemies.push({
-        x: Math.floor(Math.random() * (SCREEN_WIDTH - 4)) + 2,
-        y: Math.floor(Math.random() * 5) + 1
+        x: Math.floor(Math.random() * (SCREEN_WIDTH - 6)) + 3,
+        y: Math.floor(Math.random() * 4) + 2
     });
 }
 
@@ -142,7 +141,7 @@ function spawnBullet(offset, yOffset) {
 
 function spawnPowerUp(x, y) {
     if (Math.random() < 0.25) {
-        powerups.push({ x: Math.min(Math.max(x, 2), SCREEN_WIDTH - 4), y: y, type: Math.floor(Math.random() * 3) + 1 });
+        powerups.push({ x: Math.min(Math.max(x, 2), SCREEN_WIDTH - 4), y: Math.floor(y), type: Math.floor(Math.random() * 3) + 1 });
     }
 }
 
@@ -177,7 +176,6 @@ function updatePhysics() {
     if (playerX < 2) { playerX = 2; playerVelocityX = 0; }
     if (playerX > SCREEN_WIDTH - 3) { playerX = SCREEN_WIDTH - 3; playerVelocityX = 0; }
 
-    // Controlled rate of fire limit to avoid infinite spamming
     if (keys['F']) {
         if (bullets.length === 0 || bullets[bullets.length - 1].y < playerY - 3) {
             if (rapidFireTimer > 0) {
@@ -193,7 +191,7 @@ function updatePhysics() {
     if (rapidFireTimer > 0) rapidFireTimer--;
     if (doubleScoreTimer > 0) doubleScoreTimer--;
 
-    bullets.forEach(b => b.y -= 1.5); // Slightly slowed bullet travel for a smoother line trail
+    bullets.forEach(b => b.y -= 1.0); 
     bullets = bullets.filter(b => b.y > 0);
 
     stars.forEach(s => {
@@ -204,20 +202,25 @@ function updatePhysics() {
     powerups.forEach(p => { if(Math.random() > 0.7) p.y++; });
     powerups = powerups.filter(p => p.y < SCREEN_HEIGHT - 1);
 
+    // FIXED: Enemy drop rate handles strict integers directly to prevent disappearing maps
     enemies.forEach(e => {
-        if(Math.random() > 0.85) e.y++; // Slowed down enemy drop rates
+        if(Math.random() > 0.85) {
+            e.y += 1;
+        }
         if(e.y >= SCREEN_HEIGHT - 1) {
             lives--;
             e.y = 1;
-            e.x = Math.floor(Math.random() * (SCREEN_WIDTH - 4)) + 2;
+            e.x = Math.floor(Math.random() * (SCREEN_WIDTH - 6)) + 3;
             if (lives <= 0) state = "GAMEOVER";
         }
     });
 
     let pX_Int = Math.floor(playerX);
     bullets.forEach((b, bIdx) => {
+        let bY_Int = Math.floor(b.y);
         enemies.forEach((e, eIdx) => {
-            if ((Math.abs(b.y - e.y) <= 1) && (b.x >= e.x - 1 && b.x <= e.x + 1)) {
+            let eY_Int = Math.floor(e.y);
+            if ((Math.abs(bY_Int - eY_Int) <= 1) && (b.x >= e.x - 1 && b.x <= e.x + 1)) {
                 bullets.splice(bIdx, 1);
                 spawnPowerUp(e.x, e.y);
                 enemies.splice(eIdx, 1);
@@ -239,7 +242,8 @@ function updatePhysics() {
     });
 
     powerups.forEach((p, pIdx) => {
-        if ((playerY === p.y || playerY === p.y + 1) && (pX_Int + 1 >= p.x && pX_Int - 1 <= p.x + 1)) {
+        let pY_Int = Math.floor(p.y);
+        if ((playerY === pY_Int || playerY === pY_Int + 1) && (pX_Int + 1 >= p.x && pX_Int - 1 <= p.x + 1)) {
             if (p.type === 1) lives++;
             if (p.type === 2) rapidFireTimer = 150;
             if (p.type === 3) doubleScoreTimer = 150;
@@ -303,30 +307,53 @@ function render() {
         }
     }
 
-    stars.forEach(s => grid[s.y][s.x] = s.type);
-    bullets.forEach(b => { 
-        let roundedY = Math.floor(b.y);
-        if (roundedY > 0 && roundedY < SCREEN_HEIGHT) grid[roundedY][b.x] = "║"; 
-    });
-    enemies.forEach(e => {
-        grid[e.y][e.x] = "V";
-        grid[e.y][e.x-1] = "<";
-        grid[e.y][e.x+1] = ">";
+    // Stars Layer
+    stars.forEach(s => {
+        let sY = Math.floor(s.y);
+        let sX = Math.floor(s.x);
+        if (sY > 0 && sY < SCREEN_HEIGHT - 1 && sX > 0 && sX < SCREEN_WIDTH - 1) {
+            grid[sY][sX] = s.type;
+        }
     });
 
+    // Bullets Layer
+    bullets.forEach(b => { 
+        let roundedY = Math.floor(b.y);
+        let roundedX = Math.floor(b.x);
+        if (roundedY > 0 && roundedY < SCREEN_HEIGHT - 1 && roundedX > 0 && roundedX < SCREEN_WIDTH - 1) {
+            grid[roundedY][roundedX] = "║"; 
+        }
+    });
+
+    // FIXED: Strict floor math mapping ensures enemies are drawn on screen every frame
+    enemies.forEach(e => {
+        let eY = Math.floor(e.y);
+        let eX = Math.floor(e.x);
+        if (eY > 0 && eY < SCREEN_HEIGHT - 1) {
+            if (eX > 1) grid[eY][eX - 1] = "<";
+            grid[eY][eX] = "#"; // Swapped to high-visibility octothorpe block symbol
+            if (eX < SCREEN_WIDTH - 2) grid[eY][eX + 1] = ">";
+        }
+    });
+
+    // Powerups Layer
     powerups.forEach(p => {
-        if (p.y > 0 && p.y < SCREEN_HEIGHT - 2) {
+        let pY = Math.floor(p.y);
+        let pX = Math.floor(p.x);
+        if (pY > 0 && pY < SCREEN_HEIGHT - 2 && pX > 0 && pX < SCREEN_WIDTH - 2) {
             let icon = p.type === 1 ? "H" : p.type === 2 ? "R" : "2";
             grid[p.y][p.x] = "[";   grid[p.y][p.x+1] = "]";
             grid[p.y+1][p.x] = "|"; grid[p.y+1][p.x+1] = icon;
         }
     });
 
+    // Player Layer
     let pX_Int = Math.floor(playerX);
     grid[playerY][pX_Int - 1] = "/";
     grid[playerY][pX_Int] = "_";
     grid[playerY][pX_Int + 1] = "\\";
 
+    // Flatten Matrix Buffer to Document Node
     for(let y=0; y<SCREEN_HEIGHT; y++) {
         output += grid[y].join("") + "\n";
     }
