@@ -15,6 +15,7 @@
             height: 100vh;
             margin: 0;
             overflow: hidden;
+            user-select: none;
         }
         #game-container {
             background-color: #000000;
@@ -25,6 +26,7 @@
             white-space: pre;
             line-height: 1.2;
             font-size: 16px;
+            outline: none; /* Removes outline when focused */
         }
         .controls-hint {
             margin-top: 15px;
@@ -35,7 +37,7 @@
 </head>
 <body>
 
-<div id="game-container">Loading Engine...</div>
+<div id="game-container" tabindex="0">Loading Engine...</div>
 <div class="controls-hint">Controls: [A] Move Left | [D] Move Right | [F] Fire Laser | [M] Main Menu | [Q] Reset Save</div>
 
 <script>
@@ -74,13 +76,32 @@ let explosions = [];
 let stars = [];
 let boss = { x: 0, y: 0, hp: 0, maxHp: 0, active: false, moveDirection: 0.5 };
 
-// Keyboard Input tracking
+// Keyboard Input tracking using robust event handling
 const keys = {};
 window.addEventListener('keydown', (e) => { 
-    keys[e.key.toUpperCase()] = true; 
-    handleMenuInputs(e.key.toUpperCase());
+    // Capture standard keys and NumPad names dynamically
+    let keyName = e.key.toUpperCase();
+    if (keyName === " ") keyName = "SPACE";
+    
+    keys[keyName] = true; 
+    handleMenuInputs(keyName);
+    
+    // Prevent spacebar and arrows from scrolling the webpage
+    if(["SPACE", "ARROWUP", "ARROWDOWN", "ARROWLEFT", "ARROWRIGHT"].includes(keyName)) {
+        e.preventDefault();
+    }
 });
-window.addEventListener('keyup', (e) => { keys[e.key.toUpperCase()] = false; });
+window.addEventListener('keyup', (e) => { 
+    let keyName = e.key.toUpperCase();
+    if (keyName === " ") keyName = "SPACE";
+    keys[keyName] = false; 
+});
+
+// Force auto-focus onto the game window as soon as the page loads
+window.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById("game-container");
+    if(container) container.focus();
+});
 
 // Local Storage Loading/Saving (Replaces your .dat files)
 if (localStorage.getItem('sfx_highScore')) highScore = parseInt(localStorage.getItem('sfx_highScore'));
@@ -138,6 +159,7 @@ function handleMenuInputs(key) {
     if (state === "STARTUP") {
         state = "MENU";
     } else if (state === "MENU") {
+        // Universal binding supporting both main row keys and NumPads safely
         if (key === '1') { numEnemies = 3; currentDifficultyTier = 1; initGame(); state = "PLAYING"; }
         if (key === '2' && unlockedDifficulty >= 2) { numEnemies = 5; currentDifficultyTier = 2; initGame(); state = "PLAYING"; }
         if (key === '3' && unlockedDifficulty >= 3) { numEnemies = 8; currentDifficultyTier = 3; initGame(); state = "PLAYING"; }
@@ -250,7 +272,7 @@ function render() {
         output += "\t\t=========================================\n\n";
         output += `\t\t       High Score To Beat: ${highScore}\n`;
         output += `\t\t       Campaign Unlocked Max: Tier ${unlockedDifficulty}\n\n`;
-        output += "\t\t          PRESS ANY KEY TO START\n";
+        output += "\t\t          PRESS ANY KEY TO OPEN MENU\n";
         output += "\t\t=========================================\n";
         document.getElementById("game-container").innerHTML = output;
         return;
@@ -341,7 +363,6 @@ function gameLoop(currentTime) {
         lastTime = currentTime - (elapsed % FRAME_TIME);
         
         if (state === "PLAYING") {
-            handleInput();
             updatePhysics();
         }
         render();
