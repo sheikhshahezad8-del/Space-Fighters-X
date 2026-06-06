@@ -2,43 +2,91 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Space Fighters X: Cinematic Web Edition</title>
     <style>
+        /* CSS Reset & Centering Layout Engine */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
         body {
-            background-color: #0b0b10;
+            background-color: #050508;
+            background-image: radial-gradient(circle at center, #0c0c16 0%, #050508 100%);
             color: #00ff66;
             font-family: 'Courier New', Courier, monospace;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
+            min-height: 100vh;
             overflow: hidden;
             user-select: none;
+            -webkit-user-select: none;
+        }
+        /* Modernized Arcade Cabinet Display Framework */
+        #game-frame {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(10, 10, 15, 0.85);
+            border: 2px solid #1a3a2a;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7),
+                        0 0 30px rgba(0, 255, 102, 0.05);
+            transition: border-color 0.3s ease;
+        }
+        #game-frame:focus-within {
+            border-color: #00ff66;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8),
+                        0 0 40px rgba(0, 255, 102, 0.15);
         }
         #game-container {
             background-color: #000000;
-            border: 4px solid #333;
+            border: 1px solid #111;
+            border-radius: 6px;
             padding: 20px;
-            box-shadow: 0 0 20px rgba(0, 255, 102, 0.2);
             text-align: left;
             white-space: pre;
-            line-height: 1.2;
-            font-size: 16px;
+            line-height: 1.25;
+            font-size: 15px;
+            letter-spacing: 0.5px;
             outline: none;
+            text-shadow: 0 0 2px rgba(0, 255, 102, 0.5);
         }
+        /* Refined Typographic Information Elements */
         .controls-hint {
-            margin-top: 15px;
-            color: #888;
-            font-size: 14px;
+            margin-top: 20px;
+            color: #4a6a55;
+            font-size: 13px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-align: center;
+            max-width: 540px;
+            line-height: 1.5;
+        }
+        .controls-hint span {
+            color: #00ff66;
+            background: rgba(0, 255, 102, 0.1);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-<div id="game-container" tabindex="0">Loading Engine...</div>
-<div class="controls-hint">Controls: [A] Move Left | [D] Move Right | [F] Fire Laser | [M] Main Menu | [Q] Reset Save</div>
+<div id="game-frame">
+    <div id="game-container" tabindex="0">Loading Core Engine Systems...</div>
+    <div class="controls-hint">
+        <span>A</span> / <span>D</span> Navigate Ship &nbsp;|&nbsp; 
+        <span>F</span> Fire Heavy Laser &nbsp;|&nbsp; 
+        <span>M</span> Main Menu &nbsp;|&nbsp; 
+        <span>Q</span> Wipe Storage Data
+    </div>
+</div>
 
 <script>
 // --- GAME CONFIGURATION ---
@@ -47,10 +95,10 @@ const SCREEN_HEIGHT = 25;
 const TARGET_FPS = 30;
 const FRAME_TIME = 1000 / TARGET_FPS;
 
-// --- TUNED SMOOTH PHYSICS ---
-const ACCELERATION = 0.35;  
-const FRICTION = 0.60;      
-const MAX_SPEED = 1.5;      
+// --- CRUISE CONTROL PHYSICS ---
+const ACCELERATION = 0.25;  
+const FRICTION = 0.55;      
+const MAX_SPEED = 1.0;      
 
 // Game State Engine
 let state = "STARTUP"; 
@@ -114,11 +162,11 @@ function initGame() {
     bullets = []; enemies = []; powerups = [];
 
     stars = [];
-    for(let i=0; i<30; i++) {
+    for(let i=0; i<25; i++) {
         stars.push({
             x: Math.floor(Math.random() * (SCREEN_WIDTH - 2)) + 1,
             y: Math.floor(Math.random() * (SCREEN_HEIGHT - 2)) + 1,
-            type: Math.random() > 0.5 ? '.' : '*'
+            type: Math.random() > 0.6 ? '.' : '*'
         });
     }
 
@@ -128,10 +176,9 @@ function initGame() {
 }
 
 function spawnEnemy() {
-    // Ensuring clean static integer positioning boundaries
     enemies.push({
         x: Math.floor(Math.random() * (SCREEN_WIDTH - 6)) + 3,
-        y: Math.floor(Math.random() * 4) + 2
+        y: Math.floor(Math.random() * 3) + 1
     });
 }
 
@@ -177,7 +224,7 @@ function updatePhysics() {
     if (playerX > SCREEN_WIDTH - 3) { playerX = SCREEN_WIDTH - 3; playerVelocityX = 0; }
 
     if (keys['F']) {
-        if (bullets.length === 0 || bullets[bullets.length - 1].y < playerY - 3) {
+        if (bullets.length === 0 || bullets[bullets.length - 1].y < playerY - 4) {
             if (rapidFireTimer > 0) {
                 spawnBullet(-1, 0); spawnBullet(-1, 1);
                 spawnBullet(0, 0);  spawnBullet(0, 1);
@@ -191,20 +238,19 @@ function updatePhysics() {
     if (rapidFireTimer > 0) rapidFireTimer--;
     if (doubleScoreTimer > 0) doubleScoreTimer--;
 
-    bullets.forEach(b => b.y -= 1.0); 
+    bullets.forEach(b => b.y -= 0.8); 
     bullets = bullets.filter(b => b.y > 0);
 
     stars.forEach(s => {
-        if(Math.random() > 0.9) s.y++;
+        if(Math.random() > 0.95) s.y++;
         if(s.y >= SCREEN_HEIGHT - 1) s.y = 1;
     });
 
-    powerups.forEach(p => { if(Math.random() > 0.7) p.y++; });
+    powerups.forEach(p => { if(Math.random() > 0.85) p.y++; });
     powerups = powerups.filter(p => p.y < SCREEN_HEIGHT - 1);
 
-    // FIXED: Enemy drop rate handles strict integers directly to prevent disappearing maps
     enemies.forEach(e => {
-        if(Math.random() > 0.85) {
+        if(Math.random() > 0.92) { 
             e.y += 1;
         }
         if(e.y >= SCREEN_HEIGHT - 1) {
@@ -307,7 +353,6 @@ function render() {
         }
     }
 
-    // Stars Layer
     stars.forEach(s => {
         let sY = Math.floor(s.y);
         let sX = Math.floor(s.x);
@@ -316,7 +361,6 @@ function render() {
         }
     });
 
-    // Bullets Layer
     bullets.forEach(b => { 
         let roundedY = Math.floor(b.y);
         let roundedX = Math.floor(b.x);
@@ -325,18 +369,16 @@ function render() {
         }
     });
 
-    // FIXED: Strict floor math mapping ensures enemies are drawn on screen every frame
     enemies.forEach(e => {
         let eY = Math.floor(e.y);
         let eX = Math.floor(e.x);
         if (eY > 0 && eY < SCREEN_HEIGHT - 1) {
             if (eX > 1) grid[eY][eX - 1] = "<";
-            grid[eY][eX] = "#"; // Swapped to high-visibility octothorpe block symbol
+            grid[eY][eX] = "#"; 
             if (eX < SCREEN_WIDTH - 2) grid[eY][eX + 1] = ">";
         }
     });
 
-    // Powerups Layer
     powerups.forEach(p => {
         let pY = Math.floor(p.y);
         let pX = Math.floor(p.x);
@@ -347,13 +389,11 @@ function render() {
         }
     });
 
-    // Player Layer
     let pX_Int = Math.floor(playerX);
     grid[playerY][pX_Int - 1] = "/";
     grid[playerY][pX_Int] = "_";
     grid[playerY][pX_Int + 1] = "\\";
 
-    // Flatten Matrix Buffer to Document Node
     for(let y=0; y<SCREEN_HEIGHT; y++) {
         output += grid[y].join("") + "\n";
     }
