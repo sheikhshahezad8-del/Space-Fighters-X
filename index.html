@@ -26,7 +26,7 @@
             white-space: pre;
             line-height: 1.2;
             font-size: 16px;
-            outline: none; /* Removes outline when focused */
+            outline: none;
         }
         .controls-hint {
             margin-top: 15px;
@@ -47,13 +47,13 @@ const SCREEN_HEIGHT = 25;
 const TARGET_FPS = 30;
 const FRAME_TIME = 1000 / TARGET_FPS;
 
-// Smooth physics constants
-const ACCELERATION = 1.25;
-const FRICTION = 0.70;
-const MAX_SPEED = 4.0;
+// --- TUNED RETRO SMOOTH PHYSICS VALUES ---
+const ACCELERATION = 0.35;  // Cut down significantly from 1.25 for precise weight
+const FRICTION = 0.60;      // Stronger dampening effect so you stop drifting instantly
+const MAX_SPEED = 1.5;      // Capped speed low so it matches a true 30 FPS cabinet look
 
 // Game State Engine
-let state = "STARTUP"; // STARTUP, MENU, PLAYING, GAMEOVER, WIN
+let state = "STARTUP"; 
 let score = 0;
 let highScore = 0;
 let lives = 3;
@@ -74,19 +74,16 @@ let enemies = [];
 let powerups = [];
 let explosions = [];
 let stars = [];
-let boss = { x: 0, y: 0, hp: 0, maxHp: 0, active: false, moveDirection: 0.5 };
 
-// Keyboard Input tracking using robust event handling
+// Keyboard Input tracking
 const keys = {};
 window.addEventListener('keydown', (e) => { 
-    // Capture standard keys and NumPad names dynamically
     let keyName = e.key.toUpperCase();
     if (keyName === " ") keyName = "SPACE";
     
     keys[keyName] = true; 
     handleMenuInputs(keyName);
     
-    // Prevent spacebar and arrows from scrolling the webpage
     if(["SPACE", "ARROWUP", "ARROWDOWN", "ARROWLEFT", "ARROWRIGHT"].includes(keyName)) {
         e.preventDefault();
     }
@@ -97,13 +94,11 @@ window.addEventListener('keyup', (e) => {
     keys[keyName] = false; 
 });
 
-// Force auto-focus onto the game window as soon as the page loads
 window.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById("game-container");
     if(container) container.focus();
 });
 
-// Local Storage Loading/Saving (Replaces your .dat files)
 if (localStorage.getItem('sfx_highScore')) highScore = parseInt(localStorage.getItem('sfx_highScore'));
 if (localStorage.getItem('sfx_unlocked')) unlockedDifficulty = parseInt(localStorage.getItem('sfx_unlocked'));
 
@@ -118,10 +113,8 @@ function initGame() {
     rapidFireTimer = 0; doubleScoreTimer = 0;
     playerX = SCREEN_WIDTH / 2;
     playerVelocityX = 0;
-    boss.active = false;
     bullets = []; enemies = []; powerups = []; explosions = [];
 
-    // Build Starfield
     stars = [];
     for(let i=0; i<30; i++) {
         stars.push({
@@ -131,7 +124,6 @@ function initGame() {
         });
     }
 
-    // Spawn initial wave
     for(let i=0; i<numEnemies; i++) {
         spawnEnemy();
     }
@@ -154,12 +146,10 @@ function spawnPowerUp(x, y) {
     }
 }
 
-// --- INTERACTIVE SCREEN ROUTING ---
 function handleMenuInputs(key) {
     if (state === "STARTUP") {
         state = "MENU";
     } else if (state === "MENU") {
-        // Universal binding supporting both main row keys and NumPads safely
         if (key === '1') { numEnemies = 3; currentDifficultyTier = 1; initGame(); state = "PLAYING"; }
         if (key === '2' && unlockedDifficulty >= 2) { numEnemies = 5; currentDifficultyTier = 2; initGame(); state = "PLAYING"; }
         if (key === '3' && unlockedDifficulty >= 3) { numEnemies = 8; currentDifficultyTier = 3; initGame(); state = "PLAYING"; }
@@ -187,36 +177,35 @@ function updatePhysics() {
     if (playerX < 2) { playerX = 2; playerVelocityX = 0; }
     if (playerX > SCREEN_WIDTH - 3) { playerX = SCREEN_WIDTH - 3; playerVelocityX = 0; }
 
-    // Dense laser column spawning
+    // Controlled rate of fire limit to avoid infinite spamming
     if (keys['F']) {
-        if (rapidFireTimer > 0) {
-            spawnBullet(-1, 0); spawnBullet(-1, 1);
-            spawnBullet(0, 0);  spawnBullet(0, 1);
-            spawnBullet(1, 0);  spawnBullet(1, 1);
-        } else {
-            spawnBullet(0, 0); spawnBullet(0, 1);
+        if (bullets.length === 0 || bullets[bullets.length - 1].y < playerY - 3) {
+            if (rapidFireTimer > 0) {
+                spawnBullet(-1, 0); spawnBullet(-1, 1);
+                spawnBullet(0, 0);  spawnBullet(0, 1);
+                spawnBullet(1, 0);  spawnBullet(1, 1);
+            } else {
+                spawnBullet(0, 0); spawnBullet(0, 1);
+            }
         }
     }
 
     if (rapidFireTimer > 0) rapidFireTimer--;
     if (doubleScoreTimer > 0) doubleScoreTimer--;
 
-    // Entities translation step
-    bullets.forEach(b => b.y -= 2);
+    bullets.forEach(b => b.y -= 1.5); // Slightly slowed bullet travel for a smoother line trail
     bullets = bullets.filter(b => b.y > 0);
 
-    // Stars & Powerup scroll steps
     stars.forEach(s => {
-        if(Math.random() > 0.8) s.y++;
+        if(Math.random() > 0.9) s.y++;
         if(s.y >= SCREEN_HEIGHT - 1) s.y = 1;
     });
 
-    powerups.forEach(p => { if(Math.random() > 0.5) p.y++; });
+    powerups.forEach(p => { if(Math.random() > 0.7) p.y++; });
     powerups = powerups.filter(p => p.y < SCREEN_HEIGHT - 1);
 
-    // Enemy movement step
     enemies.forEach(e => {
-        if(Math.random() > 0.7) e.y++;
+        if(Math.random() > 0.85) e.y++; // Slowed down enemy drop rates
         if(e.y >= SCREEN_HEIGHT - 1) {
             lives--;
             e.y = 1;
@@ -225,11 +214,10 @@ function updatePhysics() {
         }
     });
 
-    // Collision Resolution step
     let pX_Int = Math.floor(playerX);
     bullets.forEach((b, bIdx) => {
         enemies.forEach((e, eIdx) => {
-            if ((b.y === e.y || b.y + 1 === e.y) && (b.x >= e.x - 1 && b.x <= e.x + 1)) {
+            if ((Math.abs(b.y - e.y) <= 1) && (b.x >= e.x - 1 && b.x <= e.x + 1)) {
                 bullets.splice(bIdx, 1);
                 spawnPowerUp(e.x, e.y);
                 enemies.splice(eIdx, 1);
@@ -250,7 +238,6 @@ function updatePhysics() {
         });
     });
 
-    // 2x2 Huge Item collection checks
     powerups.forEach((p, pIdx) => {
         if ((playerY === p.y || playerY === p.y + 1) && (pX_Int + 1 >= p.x && pX_Int - 1 <= p.x + 1)) {
             if (p.type === 1) lives++;
@@ -306,7 +293,6 @@ function render() {
         return;
     }
 
-    // Draw Active Playfield Canvas Map Grid Buffer Array Matrix
     let grid = [];
     for(let y=0; y<SCREEN_HEIGHT; y++) {
         grid[y] = [];
@@ -318,14 +304,16 @@ function render() {
     }
 
     stars.forEach(s => grid[s.y][s.x] = s.type);
-    bullets.forEach(b => { if (b.y > 0 && b.y < SCREEN_HEIGHT) grid[b.y][b.x] = "║"; });
+    bullets.forEach(b => { 
+        let roundedY = Math.floor(b.y);
+        if (roundedY > 0 && roundedY < SCREEN_HEIGHT) grid[roundedY][b.x] = "║"; 
+    });
     enemies.forEach(e => {
         grid[e.y][e.x] = "V";
         grid[e.y][e.x-1] = "<";
         grid[e.y][e.x+1] = ">";
     });
 
-    // Draw Huge 2x2 Box Items
     powerups.forEach(p => {
         if (p.y > 0 && p.y < SCREEN_HEIGHT - 2) {
             let icon = p.type === 1 ? "H" : p.type === 2 ? "R" : "2";
@@ -334,18 +322,15 @@ function render() {
         }
     });
 
-    // Draw Ship
     let pX_Int = Math.floor(playerX);
     grid[playerY][pX_Int - 1] = "/";
     grid[playerY][pX_Int] = "_";
     grid[playerY][pX_Int + 1] = "\\";
 
-    // Flatten grid matrix to HTML output string
     for(let y=0; y<SCREEN_HEIGHT; y++) {
         output += grid[y].join("") + "\n";
     }
 
-    // Render HUD element components
     output += `\n SCORE: ${score.toString().padEnd(4)} | KILLS: ${kills.toString().padEnd(3)}/100 | LIVES: ${lives} `;
     if (rapidFireTimer > 0) output += `[⚡ OVERDRIVE] `;
     if (doubleScoreTimer > 0) output += `[♦ 2x POINTS] `;
@@ -353,7 +338,7 @@ function render() {
     document.getElementById("game-container").innerHTML = output;
 }
 
-// --- CINEMATIC TICK CONTROLLER LOOP ---
+// --- ENGINE LOOP TICK CONTROLLER ---
 let lastTime = performance.now();
 function gameLoop(currentTime) {
     requestAnimationFrame(gameLoop);
@@ -369,7 +354,6 @@ function gameLoop(currentTime) {
     }
 }
 
-// Start Engine Hook
 requestAnimationFrame(gameLoop);
 </script>
 
